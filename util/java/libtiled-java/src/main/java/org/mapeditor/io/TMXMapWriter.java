@@ -69,6 +69,14 @@ import org.mapeditor.io.xml.XMLWriter;
  *
  * @version 1.2.3
  */
+// PATCH wmarkow 27.02.2020 "Object id not written"
+// PATCH wmarkow 27.02.2020 "Write name at the end"
+// PATCH wmarkow 27.02.2020 "Write gid after id"
+// PATCH wmarkow 27.02.2020 "Output stream not closed"
+// PATCH wmarkow 27.02.2020 "Layer id not written" begin
+// PATCH wmarkow 27.02.2020 "Not all map attributes written"
+// PATCH wmarkow 27.02.2020 "Add a switch for compress layer data"
+// PATCH wmarkow 27.02.2020 "Add possibility to encode map layer data in csv"
 public class TMXMapWriter
 {
 
@@ -85,8 +93,18 @@ public class TMXMapWriter
         @Deprecated
         public static final String LAYER_COMPRESSION_METHOD_GZIP = "gzip";
         public static final String LAYER_COMPRESSION_METHOD_ZLIB = "zlib";
+        // PATCH "Add possibility to encode map layer data in csv" begin
+        public static final String LAYER_ENCODING_METHOD_BASE64 = "base64";
+        public static final String LAYER_ENCODING_METHOD_CSV = "csv";
+        // PATCH end
 
         public String layerCompressionMethod = LAYER_COMPRESSION_METHOD_ZLIB;
+        // PATCH "Add a switch for compress layer data" begin
+        public boolean compressLayerData = COMPRESS_LAYER_DATA;
+        // PATCH end
+        // PATCH "Add possibility to encode map layer data in csv" begin
+        public String layerEncodingMethod = LAYER_ENCODING_METHOD_BASE64;
+        // PATCH end
     }
 
     public Settings settings = new Settings();
@@ -123,6 +141,10 @@ public class TMXMapWriter
         {
             ((GZIPOutputStream) os).finish();
         }
+
+        // PATCH "Output stream not closed" begin
+        os.close();
+        // PATCH end
     }
 
     /**
@@ -146,6 +168,10 @@ public class TMXMapWriter
         xmlWriter.endDocument();
 
         writer.flush();
+
+        // PATCH "Output stream not closed" begin
+        os.close();
+        // PATCH end
     }
 
     /**
@@ -197,15 +223,27 @@ public class TMXMapWriter
         w.writeDocType("map", null, "http://mapeditor.org/dtd/1.0/map.dtd");
         w.startElement("map");
 
-        w.writeAttribute("version", "1.0");
+        // PATCH "Not all map attributes written" begin
+        // w.writeAttribute("version", "1.0");
+        w.writeAttribute("version", map.getVersion());
+        w.writeAttribute("tiledversion", map.getTiledversion());
+        // PATCH "Not all map attributes written" end
 
         Orientation orientation = map.getOrientation();
         w.writeAttribute("orientation", orientation.value());
+        // PATCH "Not all map attributes written" begin
+        w.writeAttribute("renderorder", map.getRenderorder().value());
+        // w.writeAttribute("compressionlevel", "0");
+        // PATCH "Not all map attributes written" end
         w.writeAttribute("width", map.getWidth());
         w.writeAttribute("height", map.getHeight());
         w.writeAttribute("tilewidth", map.getTileWidth());
         w.writeAttribute("tileheight", map.getTileHeight());
-
+        // PATCH "Not all map attributes written" begin
+        w.writeAttribute("infinite", map.getInfinite());
+        w.writeAttribute("nextlayerid", map.getNextlayerid());
+        w.writeAttribute("nextobjectid", map.getNextobjectid());
+        // PATCH "Not all map attributes written" end
         switch (orientation)
         {
             case HEXAGONAL:
@@ -437,6 +475,9 @@ public class TMXMapWriter
     private void writeLayerAttributes(MapLayer l, XMLWriter w) throws IOException
     {
         Rectangle bounds = l.getBounds();
+        // PATCH "Layer id not written" begin
+        w.writeAttribute("id", l.getId());
+        // PATCH end
         w.writeAttribute("name", l.getName());
         if (l instanceof TileLayer)
         {
@@ -500,10 +541,17 @@ public class TMXMapWriter
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             OutputStream out;
 
-            w.writeAttribute("encoding", "base64");
+            // PATCH "Add possibility to encode map layer data in csv" begin
+            // w.writeAttribute("encoding", "base64");
+            w.writeAttribute("encoding", settings.layerEncodingMethod);
+            // PATCH end
 
-            DeflaterOutputStream dos;
-            if (COMPRESS_LAYER_DATA)
+            // PATCH "Add a switch for compress layer data" begin
+            // DeflaterOutputStream dos;
+            DeflaterOutputStream dos = null;
+            // if (COMPRESS_LAYER_DATA)
+            if (settings.compressLayerData)
+            // PATCH end
             {
                 if (Settings.LAYER_COMPRESSION_METHOD_ZLIB.equalsIgnoreCase(settings.layerCompressionMethod))
                 {
@@ -535,20 +583,54 @@ public class TMXMapWriter
                         gid = getGid(tile);
                     }
 
-                    out.write(gid & LAST_BYTE);
-                    out.write(gid >> Byte.SIZE & LAST_BYTE);
-                    out.write(gid >> Byte.SIZE * 2 & LAST_BYTE);
-                    out.write(gid >> Byte.SIZE * 3 & LAST_BYTE);
+                    // PATCH "Add possibility to encode map layer data in csv" begin
+                    // out.write(gid & LAST_BYTE);
+                    // out.write(gid >> Byte.SIZE & LAST_BYTE);
+                    // out.write(gid >> Byte.SIZE * 2 & LAST_BYTE);
+                    // out.write(gid >> Byte.SIZE * 3 & LAST_BYTE);
+                    if (Settings.LAYER_ENCODING_METHOD_BASE64.equals(settings.layerEncodingMethod))
+                    {
+                        out.write(gid & LAST_BYTE);
+                        out.write(gid >> Byte.SIZE & LAST_BYTE);
+                        out.write(gid >> Byte.SIZE * 2 & LAST_BYTE);
+                        out.write(gid >> Byte.SIZE * 3 & LAST_BYTE);
+                    } else
+                    {
+                        // CSV as fallback
+                        String gidAsString = String.valueOf(gid);
+                        byte[] gidAsStringBytes = gidAsString.getBytes(Charset.forName("UTF-8"));
+                        out.write(gidAsStringBytes);
+                        out.write(",".getBytes(Charset.forName("UTF-8")));
+                    }
+                    // PATCH end
                 }
+                // PATCH "Add possibility to encode map layer data in csv" begin
+                if (y < l.getHeight() - 1)
+                {
+                    out.write("\n\r".getBytes(Charset.forName("UTF-8")));
+                }
+                // PATCH end
             }
 
-            if (COMPRESS_LAYER_DATA && dos != null)
+            // PATCH "Add a switch for compress layer data" begin
+            // if (COMPRESS_LAYER_DATA && dos != null)
+            if (settings.compressLayerData && dos != null)
+            // PATCH end
             {
                 dos.finish();
             }
 
             byte[] dec = baos.toByteArray();
-            w.writeCDATA(DatatypeConverter.printBase64Binary(dec));
+            // PATCH "Add possibility to encode map layer data in csv" begin
+            // w.writeCDATA(DatatypeConverter.printBase64Binary(dec));
+            if (Settings.LAYER_ENCODING_METHOD_BASE64.equals(settings.layerEncodingMethod))
+            {
+                w.writeCDATA(DatatypeConverter.printBase64Binary(dec));
+            } else
+            {
+                w.writeCDATA(new String(dec, Charset.forName("UTF-8")));
+            }
+            // PATCH end
         } else
         {
             for (int y = 0; y < l.getHeight(); y++)
@@ -676,7 +758,24 @@ public class TMXMapWriter
     private void writeMapObject(MapObject mapObject, XMLWriter w, String wp) throws IOException
     {
         w.startElement("object");
-        w.writeAttribute("name", mapObject.getName());
+        // PATCH "Object id not written" begin
+        w.writeAttribute("id", mapObject.getId());
+        // PATCH end
+
+        // PATCH "Write gid after id" begin
+        if (mapObject.getTile() != null)
+        {
+            Tile t = mapObject.getTile();
+            w.writeAttribute("gid", firstGidPerTileset.get(t.getTileSet()) + t.getId());
+        } else if (mapObject.getGid() != null)
+        {
+            w.writeAttribute("gid", mapObject.getGid());
+        }
+        // PATCH end
+
+        // PATCH "Write name at the end" begin
+        // w.writeAttribute("name", mapObject.getName());
+        // PATCH end
 
         if (mapObject.getType().length() != 0)
         {
@@ -695,14 +794,16 @@ public class TMXMapWriter
             w.writeAttribute("height", mapObject.getHeight());
         }
 
-        if (mapObject.getTile() != null)
-        {
-            Tile t = mapObject.getTile();
-            w.writeAttribute("gid", firstGidPerTileset.get(t.getTileSet()) + t.getId());
-        } else if (mapObject.getGid() != null)
-        {
-            w.writeAttribute("gid", mapObject.getGid());
-        }
+        // PATCH "Write gid after id" begin
+        // if (mapObject.getTile() != null)
+        // {
+        // Tile t = mapObject.getTile();
+        // w.writeAttribute("gid", firstGidPerTileset.get(t.getTileSet()) + t.getId());
+        // } else if (mapObject.getGid() != null)
+        // {
+        // w.writeAttribute("gid", mapObject.getGid());
+        // }
+        // PATCH end
 
         writeProperties(mapObject.getProperties(), w);
 
@@ -712,7 +813,9 @@ public class TMXMapWriter
             w.writeAttribute("source", getRelativePath(wp, mapObject.getImageSource()));
             w.endElement();
         }
-
+        // PATCH "Write name at the end" begin
+        w.writeAttribute("name", mapObject.getName());
+        // PATCH end
         w.endElement();
     }
 

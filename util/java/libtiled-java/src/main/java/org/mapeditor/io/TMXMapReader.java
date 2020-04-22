@@ -83,6 +83,10 @@ import org.xml.sax.SAXException;
  *
  * @version 1.2.3
  */
+// PATCH wmarkow 24.02.2020 "Tilecount in TileSet is missing"
+// PATCH wmarkow 24.02.2020 "Animation info in Tile is missing"
+// PATCH wmarkow 27.02.2020 "Object id is missing"
+// PATCH wmarkow 27.02.2020 "Layer id not read" begin
 public class TMXMapReader
 {
 
@@ -310,6 +314,11 @@ public class TMXMapReader
 
             set.setName(name);
 
+            // PATCH "Tilecount in TileSet is missing" begin
+            final int tileCount = getAttribute(t, "tilecount", 0);
+            set.setTilecount(tileCount);
+            // PATCH end
+
             boolean hasTilesetImage = false;
             NodeList children = t.getChildNodes();
 
@@ -367,6 +376,10 @@ public class TMXMapReader
                     {
                         Tile myTile = set.getTile(tile.getId());
                         myTile.setProperties(tile.getProperties());
+
+                        // PATCH "Animation info in Tile is missing" begin
+                        myTile.setAnimation(tile.getAnimation());
+                        // PATCH end
                         // TODO: there is the possibility here of overlaying images,
                         // which some people may want
                     }
@@ -388,6 +401,9 @@ public class TMXMapReader
         final String name = getAttributeValue(t, "name");
         final String type = getAttributeValue(t, "type");
         final String gid = getAttributeValue(t, "gid");
+        // PATCH "Object id is missing" begin
+        final String id = getAttributeValue(t, "id");
+        // PATCH end
         final double x = getDoubleAttribute(t, "x", 0);
         final double y = getDoubleAttribute(t, "y", 0);
         final double width = getDoubleAttribute(t, "width", 0);
@@ -396,6 +412,12 @@ public class TMXMapReader
 
         MapObject obj = new MapObject(x, y, width, height, rotation);
         obj.setShape(obj.getBounds());
+        // PATCH "Object id is missing" begin
+        if (id != null)
+        {
+            obj.setId(Integer.parseInt(id));
+        }
+        // PATCH end
         if (name != null)
         {
             obj.setName(name);
@@ -631,12 +653,18 @@ public class TMXMapReader
 
         TileLayer ml = new TileLayer(layerWidth, layerHeight);
 
+        // PATCH "Layer id not read" begin
+        final int id = getAttribute(t, "id", 0);
+        // PATCH end
         final int offsetX = getAttribute(t, "x", 0);
         final int offsetY = getAttribute(t, "y", 0);
         final int visible = getAttribute(t, "visible", 1);
         String opacity = getAttributeValue(t, "opacity");
 
         ml.setName(getAttributeValue(t, "name"));
+        // PATCH "Layer id not read" begin
+        ml.setId(id);
+        // PATCH end
 
         if (opacity != null)
         {
